@@ -53,7 +53,7 @@ button:focus-visible{outline:3px solid var(--accent)}
 .stick{position:absolute;left:calc(var(--sal) + 18px);bottom:calc(var(--sab) + 22px);width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.65);border:2px solid var(--accent);touch-action:none}
 .knob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:var(--accent);pointer-events:none}
 .top{position:absolute;left:50%;top:calc(var(--sat) + 8px);transform:translateX(-50%);display:flex;gap:8px}
-.top button{padding:5px 10px;font-size:12px;opacity:.9}
+.top button{padding:5px 10px;font-size:12px;opacity:.9} #gyrobtn[aria-pressed="true"]{background:var(--accent);color:#fff}
 #flip{display:none}
 .rot #flip{display:block}
 #rotmsg{display:none;position:absolute;left:50%;top:30%;transform:translateX(-50%);max-width:80%;text-align:center;background:rgba(0,0,0,.7);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;pointer-events:none}
@@ -133,7 +133,7 @@ button:focus-visible{outline:3px solid var(--accent)}
 <canvas id="c"></canvas>
 <div class="hud"><h1>عالم المكعبات</h1><p id="hint"></p></div>
 <div class="left" id="leftbox"><canvas id="map" width="96" height="96"></canvas><div id="coords"></div></div>
-<div class="top"><button id="fs" hidden>ملء الشاشة</button><button id="flip">اقلب الاتجاه</button><button id="edbtn">تخصيص الأزرار</button></div>
+<div class="top"><button id="fs" hidden>ملء الشاشة</button><button id="flip">اقلب الاتجاه</button><button id="edbtn">تخصيص الأزرار</button><button id="gyrobtn" aria-pressed="false">تشغيل الجيروسكوب</button></div>
 <div id="rotmsg">أدِر هاتفك جانبيًا لتلعب بالعرض، أو اضغط «اقلب الاتجاه» إذا كانت اللعبة مقلوبة</div>
 <div id="uw"></div>
 <div class="cross" aria-hidden="true"></div><div id="toast"></div><div id="hearts" aria-label="الصحة"></div><div id="hurt"></div><div id="death"><div>لقد متّ!</div><button id="respawn">العودة للحياة</button></div>
@@ -1057,6 +1057,46 @@ function endDrag(e){if(e.pointerId!==dragId)return;dragId=null;
 canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);
 addEventListener('pointerup',e=>{if(e.pointerType==='mouse'){if(e.button===2)mousePut=false;else if(e.button===0)mouseBrk=false;}});
 
+/* ===== الجيروسكوب: إمالة الهاتف لتحريك الكاميرا ===== */
+let gyroOn=false,gyroLast=null,gyroBase=null;
+const gyroBtn=$('gyrobtn');
+function gyroPermissionAndStart(){
+ const start=()=>{
+  gyroOn=true;gyroLast=null;gyroBase=null;
+  gyroBtn.textContent='إيقاف الجيروسكوب';
+  gyroBtn.setAttribute('aria-pressed','true');
+  toast('حرّك الهاتف لتوجيه الكاميرا');
+  window.addEventListener('deviceorientation',onGyro,{passive:true});
+ };
+ if(!('DeviceOrientationEvent' in window)){toast('هذا المتصفح لا يدعم الجيروسكوب');return;}
+ if(typeof DeviceOrientationEvent.requestPermission==='function'){
+  DeviceOrientationEvent.requestPermission().then(v=>{
+   if(v==='granted')start();else toast('لم يتم السماح باستخدام مستشعر الحركة');
+  }).catch(()=>toast('تعذّر تشغيل الجيروسكوب'));
+ }else start();
+}
+function onGyro(e){
+ if(!gyroOn||invOpen||dead||e.beta==null||e.gamma==null)return;
+ // إمالة الهاتف تغيّر زاوية النظر تدريجيًا؛ نستخدم فروق القراءات لتجنب القفز المفاجئ.
+ const a=(screen.orientation&&Number.isFinite(screen.orientation.angle))?screen.orientation.angle:((window.orientation||0)+360)%360;
+ let x=e.gamma,y=e.beta;
+ if(a===90){const q=x;x=-y;y=q;}
+ else if(a===270){const q=x;x=y;y=-q;}
+ if(!gyroLast){gyroLast={x,y};return;}
+ let dx=x-gyroLast.x,dy=y-gyroLast.y;
+ if(dx>180)dx-=360;if(dx< -180)dx+=360;
+ if(dy>180)dy-=360;if(dy< -180)dy+=360;
+ gyroLast={x,y};
+ camYaw-=dx*.012;
+ camPitch=clampPitch(camPitch+dy*.010);
+}
+gyroBtn.addEventListener('click',()=>{
+ if(gyroOn){
+  gyroOn=false;gyroLast=null;window.removeEventListener('deviceorientation',onGyro);
+  gyroBtn.textContent='تشغيل الجيروسكوب';gyroBtn.setAttribute('aria-pressed','false');
+  toast('تم إيقاف الجيروسكوب');
+ }else gyroPermissionAndStart();
+});
 /* عصا الحركة */
 const stick=$('stick'),knob=$('knob');let jx=0,jy=0,sid=null;
 function stickMove(e){const r=stick.getBoundingClientRect(),R=r.width/2;
